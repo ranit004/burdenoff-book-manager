@@ -7,7 +7,7 @@ import { folderResolvers } from './folder.resolvers';
  *
  * Resolvers are split by domain entity into sibling modules and merged here,
  * so each module stays small and the schema does not need to know how many
- * there are. Later steps add the bookmark mutation resolvers.
+ * there are.
  */
 export const resolvers = {
   // Belongs to the schema itself rather than to any one operation.
@@ -20,6 +20,7 @@ export const resolvers = {
 
   Mutation: {
     ...folderResolvers.Mutation,
+    ...bookmarkResolvers.Mutation,
   },
 
   Folder: {

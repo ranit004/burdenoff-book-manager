@@ -1,8 +1,10 @@
 import type { Bookmark, Folder } from '../../generated/prisma/client';
+import { assertValid } from '../../lib/errors';
+import { validateName } from '../../lib/validation';
 import type { GraphQLContext } from '../context';
 
 /**
- * Folder queries.
+ * Folder queries and mutations.
  *
  * `folder(id)` returns `null` for a missing folder rather than throwing.
  *
@@ -18,6 +20,10 @@ interface FolderArgs {
   readonly id: string;
 }
 
+interface CreateFolderArgs {
+  readonly name: string;
+}
+
 export const folderResolvers = {
   Query: {
     /** All folders, alphabetically. Backed by the `name` index. */
@@ -27,6 +33,33 @@ export const folderResolvers = {
     /** A single folder, or null when no folder has that id. */
     folder: (_parent: unknown, args: FolderArgs, context: GraphQLContext): Promise<Folder | null> =>
       context.prisma.folder.findUnique({ where: { id: args.id } }),
+  },
+
+  Mutation: {
+    /**
+     * Creates a folder.
+     *
+     * `name` is validated before the write, so an empty, whitespace-only, or
+     * over-long name is rejected as BAD_USER_INPUT and never reaches the
+     * database. GraphQL's `String!` only guarantees a string is present — it
+     * says nothing about whether that string is meaningful.
+     *
+     * The stored name is trimmed. Persisting `"  Work  "` verbatim would sort
+     * unpredictably against `"Work"` and look identical to it in a client, so
+     * the leading and trailing whitespace is dropped rather than preserved as a
+     * silent difference between two otherwise identical folders.
+     */
+    createFolder: (
+      _parent: unknown,
+      args: CreateFolderArgs,
+      context: GraphQLContext,
+    ): Promise<Folder> => {
+      assertValid(() => {
+        validateName(args.name);
+      });
+
+      return context.prisma.folder.create({ data: { name: args.name.trim() } });
+    },
   },
 
   Folder: {

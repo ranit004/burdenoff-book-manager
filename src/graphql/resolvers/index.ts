@@ -1,4 +1,5 @@
 import { DateTimeResolver } from 'graphql-scalars';
+import { bookmarkResolvers } from './bookmark.resolvers';
 import { folderResolvers } from './folder.resolvers';
 
 /**
@@ -6,7 +7,7 @@ import { folderResolvers } from './folder.resolvers';
  *
  * Resolvers are split by domain entity into sibling modules and merged here,
  * so each module stays small and the schema does not need to know how many
- * there are. Later steps add the bookmark query and mutation resolvers.
+ * there are. Later steps add the mutation resolvers.
  */
 export const resolvers = {
   // Belongs to the schema itself rather than to any one operation.
@@ -14,11 +15,16 @@ export const resolvers = {
 
   Query: {
     ...folderResolvers.Query,
+    ...bookmarkResolvers.Query,
   },
 
   Mutation: {},
 
   Folder: {
     ...folderResolvers.Folder,
+  },
+
+  Bookmark: {
+    ...bookmarkResolvers.Bookmark,
   },
 };

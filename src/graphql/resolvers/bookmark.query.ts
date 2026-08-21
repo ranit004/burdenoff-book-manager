@@ -57,3 +57,95 @@ export const BOOKMARK_ORDER_BY: Prisma.BookmarkOrderByWithRelationInput[] = [
   { createdAt: 'asc' },
   { id: 'asc' },
 ];
+
+// ---------------------------------------------------------------------------
+// Cursor pagination
+// ---------------------------------------------------------------------------
+
+/** Page size when the client does not ask for one. */
+export const DEFAULT_TAKE = 20;
+
+/**
+ * Hard ceiling on page size. Without a cap, `bookmarks(take: 1000000)` is an
+ * unbounded query any client can issue — a denial-of-service foothold and an
+ * easy way to exhaust server memory.
+ */
+export const MAX_TAKE = 100;
+
+export interface BookmarkPageArgs extends BookmarkFilterArgs {
+  readonly take?: number | null;
+  readonly cursor?: string | null;
+}
+
+/**
+ * Resolves the requested page size, clamping to MAX_TAKE.
+ *
+ * Clamping rather than erroring on an oversized `take` is deliberate: the
+ * client still gets a full page plus a `nextCursor`, so it can keep paging and
+ * reach every row. Values below 1 are rejected upstream by `validateTake`,
+ * because there is no sensible page to return for them.
+ */
+export function resolvePageSize(take?: number | null): number {
+  if (take === undefined || take === null) {
+    return DEFAULT_TAKE;
+  }
+  return Math.min(take, MAX_TAKE);
+}
+
+/** The Prisma `findMany` arguments for one page. */
+export interface BookmarkPageQuery {
+  readonly where: Prisma.BookmarkWhereInput;
+  readonly orderBy: Prisma.BookmarkOrderByWithRelationInput[];
+  readonly take: number;
+  readonly cursor?: { id: string };
+  readonly skip?: number;
+}
+
+/**
+ * Builds the query for one page, wrapping the filter helper above.
+ *
+ * Two details carry the design:
+ *
+ * 1. `take` is pageSize + 1. Reading one row beyond the page is how we learn
+ *    whether a next page exists without a second `count()` query — one round
+ *    trip instead of two, and no risk of the count disagreeing with the page
+ *    because rows changed in between.
+ *
+ * 2. Prisma treats `cursor` as inclusive, so `skip: 1` steps past the row the
+ *    client already has. Without it every page would repeat its predecessor's
+ *    last row.
+ */
+export function buildBookmarkPageQuery(
+  args: BookmarkPageArgs,
+  pageSize: number,
+): BookmarkPageQuery {
+  const cursor = args.cursor?.trim();
+  const hasCursor = cursor !== undefined && cursor !== '';
+
+  return {
+    where: buildBookmarkWhere(args),
+    orderBy: BOOKMARK_ORDER_BY,
+    take: pageSize + 1,
+    ...(hasCursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  };
+}
+
+/**
+ * Splits the over-fetched rows into a page and the cursor for the next one.
+ *
+ * A non-null `nextCursor` therefore always has at least one row behind it: it
+ * is only set when row pageSize + 1 actually came back. Clients never get a
+ * cursor that leads to an empty page.
+ */
+export function toBookmarkConnection<T extends { id: string }>(
+  rows: readonly T[],
+  pageSize: number,
+): { items: T[]; nextCursor: string | null } {
+  const hasNextPage = rows.length > pageSize;
+  const items = hasNextPage ? rows.slice(0, pageSize) : [...rows];
+
+  return {
+    items,
+    nextCursor: hasNextPage ? (items.at(-1)?.id ?? null) : null,
+  };
+}

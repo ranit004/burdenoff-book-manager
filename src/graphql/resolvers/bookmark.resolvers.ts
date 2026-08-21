@@ -1,14 +1,19 @@
 import type { Bookmark, Folder } from '../../generated/prisma/client';
-import { NotFoundError } from '../../lib/errors';
+import { NotFoundError, assertValid } from '../../lib/errors';
+import { validateTake } from '../../lib/validation';
 import type { GraphQLContext } from '../context';
-import { BOOKMARK_ORDER_BY, buildBookmarkWhere, type BookmarkFilterArgs } from './bookmark.query';
+import {
+  buildBookmarkPageQuery,
+  resolvePageSize,
+  toBookmarkConnection,
+  type BookmarkPageArgs,
+} from './bookmark.query';
 
 /**
  * Bookmark queries.
  *
- * Filtering only at this step — `take`/`cursor` are declared in the schema but
- * not yet honoured; pagination wraps this query in the next step. The `where`
- * clause is built by a pure helper so that layering stays additive.
+ * Filtering and pagination are both built by pure helpers in bookmark.query.ts,
+ * so this resolver is only orchestration: validate, build, query, shape.
  */
 
 /** One page of bookmarks. Shape matches the `BookmarkConnection` SDL type. */
@@ -21,19 +26,31 @@ export const bookmarkResolvers = {
   Query: {
     /**
      * Bookmarks, optionally filtered by folder and/or a case-insensitive title
-     * substring. Returns every match for now, so `nextCursor` is always null.
+     * substring, returned one cursor-paginated page at a time.
+     *
+     * Cursor pagination rather than offset: with `skip`/`offset`, a row
+     * inserted or deleted between two page requests shifts every later row, so
+     * clients silently miss rows or see them twice. A cursor anchors the next
+     * page to a specific row instead, which is stable under concurrent writes.
      */
     bookmarks: async (
       _parent: unknown,
-      args: BookmarkFilterArgs,
+      args: BookmarkPageArgs,
       context: GraphQLContext,
     ): Promise<BookmarkConnection> => {
-      const items = await context.prisma.bookmark.findMany({
-        where: buildBookmarkWhere(args),
-        orderBy: BOOKMARK_ORDER_BY,
-      });
+      const requestedTake = args.take;
+      if (requestedTake !== undefined && requestedTake !== null) {
+        assertValid(() => {
+          validateTake(requestedTake);
+        });
+      }
 
-      return { items, nextCursor: null };
+      const pageSize = resolvePageSize(requestedTake);
+
+      // Deliberately over-fetches by one row; toBookmarkConnection strips it.
+      const rows = await context.prisma.bookmark.findMany(buildBookmarkPageQuery(args, pageSize));
+
+      return toBookmarkConnection(rows, pageSize);
     },
   },
 

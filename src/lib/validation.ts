@@ -103,3 +103,23 @@ export function validateTags(tags: readonly string[]): void {
     }
   }
 }
+
+/**
+ * Rejects a page size that cannot describe a page.
+ *
+ * Only the lower bound is an error. An oversized `take` is clamped to the
+ * server's maximum instead (see resolvePageSize): the client still receives a
+ * full page and a cursor to continue from, so clamping loses it nothing, while
+ * `take: 0` or `take: -5` has no reasonable interpretation at all.
+ *
+ * GraphQL's Int already guarantees a 32-bit integer, but the integer check is
+ * kept so the rule holds for any non-GraphQL caller of this module.
+ */
+export function validateTake(take: number): void {
+  if (!Number.isInteger(take)) {
+    throw new InvalidInputError('take', `take must be a whole number (received ${String(take)}).`);
+  }
+  if (take < 1) {
+    throw new InvalidInputError('take', `take must be at least 1 (received ${String(take)}).`);
+  }
+}

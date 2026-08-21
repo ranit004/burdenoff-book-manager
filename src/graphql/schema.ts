@@ -1,6 +1,6 @@
 import { makeExecutableSchema } from '@graphql-tools/schema';
-import { DateTimeResolver } from 'graphql-scalars';
 import type { GraphQLSchema } from 'graphql';
+import { resolvers } from './resolvers';
 
 /**
  * Schema-first assembly.
@@ -13,21 +13,6 @@ import type { GraphQLSchema } from 'graphql';
 // Read the SDL at startup rather than embedding it in a template literal, so
 // schema.graphql stays a real .graphql file that editors and linters can parse.
 const typeDefs = await Bun.file(new URL('./schema.graphql', import.meta.url)).text();
-
-/**
- * Resolver map. Query/Mutation/field resolvers are added in the steps that
- * implement them; `DateTime` is wired up here because it belongs to the schema
- * itself rather than to any one operation.
- *
- * DateTimeResolver serializes `Date` to an ISO-8601 string and rejects invalid
- * inputs, so the scalar is validated in both directions instead of being an
- * unchecked passthrough.
- */
-export const resolvers = {
-  DateTime: DateTimeResolver,
-  Query: {},
-  Mutation: {},
-};
 
 export const schema: GraphQLSchema = makeExecutableSchema({
   typeDefs,

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+bun.lock
+bun.lockb
+
+# Generated output
+src/generated/
+
+# Prisma owns the formatting of these (`prisma format` / `prisma migrate`)
+prisma/migrations/

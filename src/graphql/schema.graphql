@@ -1,0 +1,175 @@
+# Bookmark Manager API
+#
+# Schema-first: this file is the contract. Resolvers are wired to it in
+# src/graphql/schema.ts, so the API shape can be reviewed independently of
+# the implementation.
+
+"""
+An ISO-8601 date-time string, e.g. `2026-08-21T10:15:30.000Z`.
+"""
+scalar DateTime
+
+# ---------------------------------------------------------------------------
+# Object types
+# ---------------------------------------------------------------------------
+
+"""
+A named container for bookmarks.
+"""
+type Folder {
+  id: ID!
+  name: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+
+  """
+  Bookmarks in this folder, oldest first. Resolved on demand, so querying a
+  folder without selecting this field costs no extra database work.
+  """
+  bookmarks: [Bookmark!]!
+}
+
+"""
+A saved link. Every bookmark belongs to exactly one folder.
+"""
+type Bookmark {
+  id: ID!
+  title: String!
+  url: String!
+
+  """
+  Free-form labels. Always a list — empty rather than null when unset.
+  """
+  tags: [String!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+
+  """
+  The owning folder's id, exposed directly so clients can avoid a nested
+  round trip when they only need the id.
+  """
+  folderId: ID!
+
+  """
+  The owning folder. Non-null: the foreign key is required.
+  """
+  folder: Folder!
+}
+
+"""
+One page of bookmarks plus the cursor needed to fetch the next page.
+"""
+type BookmarkConnection {
+  """
+  The bookmarks in this page, oldest first.
+  """
+  items: [Bookmark!]!
+
+  """
+  Pass as `cursor` to fetch the next page. `null` means this is the last
+  page — the server confirms that by reading one row beyond the page, so a
+  non-null `nextCursor` always has at least one row behind it.
+  """
+  nextCursor: String
+}
+
+# ---------------------------------------------------------------------------
+# Inputs
+# ---------------------------------------------------------------------------
+
+input CreateBookmarkInput {
+  title: String!
+  url: String!
+
+  """
+  Must reference an existing folder; the API verifies this before inserting
+  and fails with NOT_FOUND rather than surfacing a raw constraint violation.
+  """
+  folderId: ID!
+  tags: [String!]
+}
+
+"""
+Partial update. Every field is optional; omitted fields are left untouched.
+Passing no fields at all is a validation error, not a silent no-op.
+"""
+input UpdateBookmarkInput {
+  title: String
+  url: String
+  tags: [String!]
+}
+
+# ---------------------------------------------------------------------------
+# Operations
+# ---------------------------------------------------------------------------
+
+type Query {
+  """
+  All folders, alphabetically by name.
+  """
+  folders: [Folder!]!
+
+  """
+  A single folder by id, or `null` if no such folder exists. Nullable-and-
+  null rather than an error, matching GraphQL convention for lookups;
+  mutations that act on a missing entity throw NOT_FOUND instead.
+  """
+  folder(id: ID!): Folder
+
+  """
+  Bookmarks, newest-last, with optional filtering and cursor pagination.
+  """
+  bookmarks(
+    """
+    Restrict to one folder (exact match).
+    """
+    folderId: ID
+
+    """
+    Case-insensitive substring match on `title`.
+    """
+    search: String
+
+    """
+    Page size. Defaults to 20, capped at 100 to bound query cost.
+    """
+    take: Int
+
+    """
+    A bookmark id from a previous page's `nextCursor`.
+    """
+    cursor: String
+  ): BookmarkConnection!
+}
+
+type Mutation {
+  """
+  Create a folder. Fails with BAD_USER_INPUT if `name` is empty or only
+  whitespace.
+  """
+  createFolder(name: String!): Folder!
+
+  """
+  Create a bookmark in an existing folder. Fails with BAD_USER_INPUT for an
+  empty title or malformed URL, and NOT_FOUND if the folder does not exist.
+  """
+  createBookmark(input: CreateBookmarkInput!): Bookmark!
+
+  """
+  Update a bookmark's title, url and/or tags. Fails with NOT_FOUND if the
+  bookmark does not exist.
+  """
+  updateBookmark(id: ID!, input: UpdateBookmarkInput!): Bookmark!
+
+  """
+  Delete a bookmark. Returns `true` on success; fails with NOT_FOUND if the
+  bookmark does not exist, so a `false` return is never ambiguous.
+  """
+  deleteBookmark(id: ID!): Boolean!
+
+  """
+  Move a bookmark to another folder. Fails with NOT_FOUND if either the
+  bookmark or the target folder does not exist.
+  """
+  moveBookmark(id: ID!, folderId: ID!): Bookmark!
+}

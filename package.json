@@ -36,8 +36,12 @@
     "typescript-eslint": "^8.67.0"
   },
   "dependencies": {
+    "@graphql-tools/schema": "^10.1.0",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "graphql": "^17.0.2",
+    "graphql-scalars": "^2.0.0",
+    "graphql-yoga": "^5.22.0",
     "pg": "^8.23.0"
   }
 }

@@ -1,0 +1,61 @@
+// Prisma schema for the Bookmark Manager API.
+// Docs: https://pris.ly/d/prisma-schema
+//
+// Regenerate the client after editing:  bun run db:generate
+// Create a migration after editing:     bun run db:migrate
+
+generator client {
+  // Prisma 7 default generator. `output` is required in v7 and the generated
+  // client is gitignored — every clone runs `bun run db:generate`.
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  // In Prisma 7 the connection URL lives in prisma.config.ts, not here.
+  provider = "postgresql"
+}
+
+/// A named container for bookmarks.
+model Folder {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookmarks Bookmark[]
+
+  // The `folders` query lists folders alphabetically, so `name` is an
+  // ORDER BY target and gets an index.
+  @@index([name])
+}
+
+/// A saved link. Every bookmark belongs to exactly one folder.
+model Bookmark {
+  id        String   @id @default(cuid())
+  title     String
+  url       String
+  tags      String[] @default([])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  folderId String
+  folder   Folder @relation(fields: [folderId], references: [id], onDelete: Restrict)
+
+  // Indexes mirror the query shapes the `bookmarks` resolver actually issues.
+  // Each is a composite ending in `id` because pagination orders by
+  // `[createdAt, id]` — `id` is the tiebreaker that keeps the cursor stable
+  // when two bookmarks share a createdAt timestamp.
+  //
+  // Filtered + paginated: WHERE folderId = ? ORDER BY createdAt, id.
+  // Postgres can also use this index's leftmost prefix for a plain
+  // `folderId` lookup, so it covers the folderId index requirement too.
+  @@index([folderId, createdAt, id])
+  // Unfiltered + paginated: ORDER BY createdAt, id.
+  @@index([createdAt, id])
+  // `title` supports ORDER BY and prefix matching. Note: it does NOT
+  // accelerate the unanchored `contains` search in the `bookmarks` resolver
+  // (ILIKE '%term%' cannot use a btree index) — that would need a pg_trgm
+  // GIN index. Documented as a known limitation in the README.
+  @@index([title])
+}

@@ -31,6 +31,6 @@
     // Prisma client, which is large and already known-good).
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "include": ["src/**/*.ts", "tests/**/*.ts", "prisma.config.ts"],
   "exclude": ["node_modules", "dist", "src/generated"]
 }

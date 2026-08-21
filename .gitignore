@@ -27,5 +27,11 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Local agent tooling
+# Local agent tooling. `prisma init` installs its CLI reference skills into
+# these directories; they are developer aids, not part of the deliverable.
 .claude/
+.agents/
+.windsurf/
+skills-lock.json
+
+/src/generated/prisma

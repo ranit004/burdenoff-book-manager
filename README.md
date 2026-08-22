@@ -114,7 +114,14 @@ the next sort a bookmark manager grows, but it earns its keep only then.
 bun test                  # everything (needs Postgres running)
 bun run test:unit         # no database required
 bun run test:integration  # needs Postgres + migrations applied
+bun run sanity            # typecheck + lint + format:check + all tests
 ```
+
+`bun run sanity` is what CI runs — see
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml), which executes it against
+a fresh Postgres 16 service container on every push and pull request. That also
+verifies the setup steps above are sufficient on a machine that has never seen
+this repository, which local green output cannot.
 
 Three layers, each testing something the others cannot:
 
@@ -340,6 +347,11 @@ Roughly in the order I would actually do it:
 Authentication, authorization/RBAC, Federation, Redis caching and deployment
 infrastructure. Nothing in the brief needs them, and each would add a dependency
 and a failure mode in exchange for functionality no test would exercise.
+
+That includes a Dockerfile for the API itself. `docker-compose.yml` exists to
+provide a database for development and CI, which is a local dependency rather
+than deployment tooling; packaging the server into an image would be answering a
+question about hosting that nobody asked.
 
 The single-user model is also why `Folder` has no `userId` and no uniqueness
 constraint on `name` — folder names are not required to be unique, and inventing

@@ -53,9 +53,10 @@ model Bookmark {
   @@index([folderId, createdAt, id])
   // Unfiltered + paginated: ORDER BY createdAt, id.
   @@index([createdAt, id])
-  // `title` supports ORDER BY and prefix matching. Note: it does NOT
-  // accelerate the unanchored `contains` search in the `bookmarks` resolver
-  // (ILIKE '%term%' cannot use a btree index) — that would need a pg_trgm
-  // GIN index. Documented as a known limitation in the README.
+  // `title` serves no query today. It does NOT accelerate the unanchored
+  // `contains` search in the `bookmarks` resolver (ILIKE '%term%' cannot use a
+  // btree index) — that would need a pg_trgm GIN index — and nothing orders by
+  // title yet. Kept because title ordering is the next sort this API grows,
+  // but it earns its keep only then. Noted as such in the README.
   @@index([title])
 }

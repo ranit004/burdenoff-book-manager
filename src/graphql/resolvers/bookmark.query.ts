@@ -5,7 +5,8 @@ import type { Prisma } from '../../generated/prisma/client';
  *
  * Filtering lives here, separate from the resolver, for two reasons: the
  * `where` clause becomes a pure function that can be asserted on directly in
- * tests, and Step 8's pagination can wrap it without touching filter logic.
+ * tests, and the pagination helpers below wrap it without touching filter
+ * logic.
  */
 
 export interface BookmarkFilterArgs {

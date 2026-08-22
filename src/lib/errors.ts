@@ -7,7 +7,7 @@ import { InvalidInputError } from './validation';
  * Both extend GraphQLError and set `extensions.code`, so clients can branch on
  * a stable machine-readable code instead of string-matching the message. These
  * are the errors the Yoga server explicitly allow-lists through its error
- * masking (see src/server.ts) — everything else is masked as a generic
+ * masking (see src/graphql/yoga.ts) — everything else is masked as a generic
  * "Unexpected error" so internals never leak.
  */
 

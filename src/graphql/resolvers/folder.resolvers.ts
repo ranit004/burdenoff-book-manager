@@ -2,6 +2,7 @@ import type { Bookmark, Folder } from '../../generated/prisma/client';
 import { assertValid } from '../../lib/errors';
 import { validateName } from '../../lib/validation';
 import type { GraphQLContext } from '../context';
+import { BOOKMARK_ORDER_BY } from './bookmark.query';
 
 /**
  * Folder queries and mutations.
@@ -72,14 +73,16 @@ export const folderResolvers = {
      * the fix is DataLoader batching, noted as a future extension in the README
      * rather than built speculatively here.
      *
-     * Ordering matches the paginated `bookmarks` query — `createdAt` with `id`
-     * as tiebreaker — so a folder's bookmarks appear in the same order however
-     * they are reached.
+     * Ordering reuses `BOOKMARK_ORDER_BY`, the same constant the paginated
+     * `bookmarks` query sorts by, so a folder's bookmarks appear in the same
+     * order however they are reached. Sharing the constant rather than
+     * repeating `[{ createdAt }, { id }]` here means the two cannot drift: a
+     * change to the sort has one place to happen.
      */
     bookmarks: (parent: Folder, _args: unknown, context: GraphQLContext): Promise<Bookmark[]> =>
       context.prisma.bookmark.findMany({
         where: { folderId: parent.id },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        orderBy: BOOKMARK_ORDER_BY,
       }),
   },
 };

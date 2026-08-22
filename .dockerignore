@@ -1,0 +1,21 @@
+# Regenerated inside the image, and a host build of it would be the wrong
+# platform anyway.
+src/generated
+node_modules
+
+# Not needed to run the server.
+tests
+.github
+.git
+.gitignore
+.gitattributes
+README.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+eslint.config.mjs
+.prettierrc.json
+.prettierignore
+
+# Never bake local secrets into an image layer.
+.env

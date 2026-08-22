@@ -20,17 +20,18 @@ Prisma and PostgreSQL.
 Prerequisites: [Bun](https://bun.sh) ≥ 1.1 (developed on 1.4.0) and Docker.
 
 ```bash
-bun install
 cp .env.example .env
 docker compose up -d --wait
-bun run db:migrate
+bun install
+bun run gendb
 bun run dev
 ```
 
 GraphiQL is then served at <http://localhost:4000/graphql>.
 
-`--wait` blocks until the container's healthcheck passes, so `db:migrate` cannot
-race Postgres startup.
+`bun run gendb` applies the migrations and generates the Prisma client — one
+command for "get my database ready". `--wait` blocks until the container's
+healthcheck passes, so that step cannot race Postgres startup.
 
 ---
 
@@ -60,6 +61,7 @@ rather than surfacing a driver error on the first query.
 
 | Command                     | What it does                                           |
 | --------------------------- | ------------------------------------------------------ |
+| `bun run gendb`             | Applies migrations and regenerates the client.         |
 | `bun run db:migrate`        | Creates/applies a migration in development.            |
 | `bun run db:migrate:deploy` | Applies existing migrations (CI, production).          |
 | `bun run db:generate`       | Regenerates the Prisma client.                         |
@@ -105,6 +107,31 @@ Each pagination index ends in `id` because the sort does — see below.
 accelerate the `search` filter (an unanchored `ILIKE '%term%'` is not a btree
 range), and no query orders by title yet. It is kept because title ordering is
 the next sort a bookmark manager grows, but it earns its keep only then.
+
+---
+
+## Running the service in Docker
+
+`docker-compose.yml` provides Postgres; the [`Dockerfile`](Dockerfile) packages
+the API itself. It is a four-stage build — dependency install, `prisma generate`,
+a second install without devDependencies, then a runtime stage that copies only
+what the server needs and drops to the non-root `bun` user.
+
+```bash
+docker build -t bookmark-api .
+docker run --rm -p 4000:4000 --network bookmark-manager_default \
+  -e DATABASE_URL="postgresql://postgres:postgres@postgres:5432/bookmark_manager?schema=public" \
+  bookmark-api
+```
+
+The network flag joins the Compose network so `postgres` resolves; point
+`DATABASE_URL` anywhere else and the flag is unnecessary. `NODE_ENV=production`
+is baked in, so GraphiQL is off — an HTML request gets `406`, not a playground.
+
+Migrations deliberately do **not** run on container start. Applying schema
+changes is a deploy step; having every replica race to do it on boot is how one
+bad rollout takes the schema with it. Run `bun run db:migrate:deploy` (or a
+one-shot job) against the target database first.
 
 ---
 
@@ -342,16 +369,57 @@ Roughly in the order I would actually do it:
    to the client, which means the server side needs a correlation id to make it
    diagnosable at all.
 
+### If this became a production system
+
+The six above are things this codebase is asking for. These are things a
+production deployment would demand, in rough dependency order:
+
+**Authentication.** A `userId` on `Folder`, resolved from a verified token in
+the Yoga context rather than passed as an argument — an id a client can supply
+is not an identity. JWT with short expiry plus refresh, or a session cookie if
+the only consumer is a first-party web app. The context is already the injection
+point, so this lands next to `prisma` rather than threading through resolvers.
+
+**Authorization.** Distinct from the above, and the part that is easy to get
+wrong: every query needs the owner predicate pushed into the `where` clause, not
+checked after the read. A per-request scoped client (or a Prisma extension that
+injects `userId`) makes the safe thing the default, because a filter someone has
+to remember is a filter someone will forget. Postgres row-level security is the
+stronger version if the threat model justifies it.
+
+**Caching.** Only once there is a measured read pattern to cache. The honest
+first step is HTTP caching on the query layer and a persisted-query allow-list;
+Redis behind `folders` (small, rarely written, read on every page load) is the
+obvious second. Cursor pages are harder to invalidate than they look, so I would
+not cache them speculatively.
+
+**Observability.** The masked-error story leaves the server side responsible for
+diagnosis: OpenTelemetry traces spanning resolver → Prisma → Postgres, a
+request id on every log line and returned in `extensions`, and metrics on p99
+latency per operation name plus error rate by `extensions.code`. A rising
+`BAD_USER_INPUT` rate is a client regression; a rising `INTERNAL_SERVER_ERROR`
+rate is ours, and the two want different alerts.
+
+**API versioning.** GraphQL versions by field rather than by URL: add the new
+field, mark the old one `@deprecated` with a reason, and use field-level usage
+metrics to know when nobody is asking for it any more. The one thing that needs
+a real deprecation window here is the cursor format — it is currently a bare id,
+and clients will persist it.
+
+**Scaling.** The server is stateless, so it scales horizontally behind a load
+balancer; Postgres is the constraint. In order: PgBouncer for connection pooling
+(Bun's per-process pool does not survive many replicas), read replicas for the
+list queries, then partitioning only if a single tenant's bookmark table
+genuinely outgrows one node — which for a bookmark manager is a long way off,
+and saying so is part of the judgment.
+
 ### Deliberately not built
 
 Authentication, authorization/RBAC, Federation, Redis caching and deployment
 infrastructure. Nothing in the brief needs them, and each would add a dependency
-and a failure mode in exchange for functionality no test would exercise.
-
-That includes a Dockerfile for the API itself. `docker-compose.yml` exists to
-provide a database for development and CI, which is a local dependency rather
-than deployment tooling; packaging the server into an image would be answering a
-question about hosting that nobody asked.
+and a failure mode in exchange for functionality no test would exercise. They
+are discussed above as extensions instead, which is where they belong until
+there is a requirement to point at.
 
 The single-user model is also why `Folder` has no `userId` and no uniqueness
 constraint on `name` — folder names are not required to be unique, and inventing

@@ -61,3 +61,11 @@ jobs:
       # typecheck + lint + format:check + the full test suite, integration
       # included.
       - run: bun run sanity
+
+  # Separate job: a Dockerfile that is never built is documentation, not a
+  # deliverable. This catches it rotting without slowing the test job down.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t bookmark-api:ci .

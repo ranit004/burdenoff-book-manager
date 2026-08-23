@@ -1,0 +1,73 @@
+name: CI
+
+# Runs the same checks as `bun run sanity`, on a machine that has never seen
+# this repository. That is the point: it proves the README's setup steps are
+# sufficient, which no amount of local green output can.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run's result irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Same major version as docker-compose.yml. If these drift, CI stops
+        # testing what developers run.
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bookmark_manager
+        ports:
+          - 5432:5432
+        # Without this, migrate races Postgres startup and fails intermittently
+        # — the worst kind of CI failure, because rerunning "fixes" it.
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bookmark_manager"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bookmark_manager?schema=public
+
+    steps:
+      # v7, not v4: v4 runs on Node 20, which the runners have deprecated and
+      # force onto Node 24 with a warning. v7 targets node24 directly.
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      # --frozen-lockfile: install exactly what bun.lock records. A lockfile
+      # that silently resolves differently in CI defeats the purpose of having
+      # one.
+      - run: bun install --frozen-lockfile
+
+      - run: bun run db:generate
+
+      # deploy, not dev: applies committed migrations without prompting or
+      # generating new ones. A drifted migration should fail here.
+      - run: bun run db:migrate:deploy
+
+      # typecheck + lint + format:check + the full test suite, integration
+      # included.
+      - run: bun run sanity
+
+  # Separate job: a Dockerfile that is never built is documentation, not a
+  # deliverable. This catches it rotting without slowing the test job down.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t bookmark-api:ci .

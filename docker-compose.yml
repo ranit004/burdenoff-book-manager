@@ -1,0 +1,46 @@
+# Local development database.
+#
+# Start it with:  docker compose up -d
+# Stop it with:   docker compose down          (keeps data)
+# Wipe it with:   docker compose down -v       (drops the named volume)
+#
+# No `version:` key — it is obsolete in Compose v2 and emits a warning.
+
+# Pinned explicitly so container/volume names do not change with the checkout
+# directory name.
+name: bookmark-manager
+
+services:
+  postgres:
+    # Pinned to a major version rather than `latest`, so every machine and CI
+    # run gets the same Postgres. Bumping it becomes a deliberate commit.
+    image: postgres:16
+    container_name: bookmark-manager-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-bookmark_manager}
+      # Speeds up initdb a little and keeps collation stable across hosts.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      # A named volume, not a bind mount: no host path or permission surprises,
+      # and `docker compose down -v` is an explicit, obvious reset.
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Lets `docker compose up --wait` and CI block until Postgres actually
+      # accepts connections, instead of racing `prisma migrate` against startup.
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-bookmark_manager}',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres-data:

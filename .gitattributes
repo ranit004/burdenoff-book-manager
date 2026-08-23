@@ -1,0 +1,14 @@
+# Normalize line endings: LF in the repository and LF on checkout everywhere,
+# including Windows. Without this, git's autocrlf would hand Windows clones
+# CRLF files that `prettier --check` (endOfLine: "lf") then rejects.
+* text=auto eol=lf
+
+# Generated / binary artifacts git should not try to diff or normalize.
+bun.lockb binary
+*.png binary
+*.jpg binary
+*.pdf binary
+
+# Generated files: collapse them in PR diffs.
+bun.lock linguist-generated=true
+prisma/migrations/** linguist-generated=true

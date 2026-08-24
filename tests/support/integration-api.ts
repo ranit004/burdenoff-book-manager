@@ -37,6 +37,10 @@ export function createTestPrisma(): PrismaClient {
  *
  * `count()` rather than `SELECT 1`: it proves the connection AND that the
  * migration has been applied, which are the two things that actually go wrong.
+ *
+ * The driver's own message is deliberately not inlined here — it carries a
+ * multi-line code frame, and Bun already prints the `cause` chain underneath.
+ * Repeating it made the actionable line the least visible part of the output.
  */
 export async function requireDatabase(prisma: PrismaClient): Promise<void> {
   try {
@@ -44,9 +48,8 @@ export async function requireDatabase(prisma: PrismaClient): Promise<void> {
   } catch (cause) {
     throw new Error(
       'Integration tests need Postgres with migrations applied. Run:\n' +
-        '  docker compose up -d\n' +
-        '  bun run db:migrate\n' +
-        `Original error: ${cause instanceof Error ? cause.message : String(cause)}`,
+        '  docker compose up -d --wait\n' +
+        '  bun run db:migrate',
       { cause },
     );
   }
@@ -64,6 +67,11 @@ export interface TestApi {
   readonly ns: string;
   /** Namespaces a folder name. */
   name: (suffix: string) => string;
+  /**
+   * Verifies Postgres is reachable and migrated. Call this in `beforeAll`:
+   * it also tells `cleanup` whether there is anything to clean up.
+   */
+  requireDatabase: () => Promise<void>;
   /** Executes an operation over HTTP and returns status, data and errors. */
   raw: <T>(query: string, variables?: Record<string, unknown>) => Promise<GraphQLResponse<T>>;
   /** Same, but throws if the response carried errors. For happy-path steps. */
@@ -77,7 +85,16 @@ export function createTestApi(): TestApi {
   const yoga = createGraphQLServer({ prisma, isDev: false, logging: false });
   const ns = `it-${crypto.randomUUID().slice(0, 8)}`;
 
+  // Set only once the connection is confirmed, so `cleanup` can tell "the run
+  // wrote rows that need removing" from "the database was never up".
+  let reachable = false;
+
   const name = (suffix: string): string => `${ns}-${suffix}`;
+
+  async function requireDatabaseForRun(): Promise<void> {
+    await requireDatabase(prisma);
+    reachable = true;
+  }
 
   async function raw<T>(
     query: string,
@@ -104,12 +121,19 @@ export function createTestApi(): TestApi {
   }
 
   async function cleanup(): Promise<void> {
-    // Bookmarks first: the relation is onDelete: Restrict, so Postgres refuses
-    // to drop a folder that still has any.
-    await prisma.bookmark.deleteMany({ where: { folder: { name: { startsWith: ns } } } });
-    await prisma.folder.deleteMany({ where: { name: { startsWith: ns } } });
+    // If the database was never reachable, this run wrote nothing — and issuing
+    // a delete anyway throws a second, unrelated driver error from `afterAll`
+    // that lands on top of the real failure and buries it. A genuine cleanup
+    // failure still throws, because rows left behind in a shared dev database
+    // are a real problem worth surfacing.
+    if (reachable) {
+      // Bookmarks first: the relation is onDelete: Restrict, so Postgres refuses
+      // to drop a folder that still has any.
+      await prisma.bookmark.deleteMany({ where: { folder: { name: { startsWith: ns } } } });
+      await prisma.folder.deleteMany({ where: { name: { startsWith: ns } } });
+    }
     await prisma.$disconnect();
   }
 
-  return { prisma, ns, name, raw, gql, cleanup };
+  return { prisma, ns, name, requireDatabase: requireDatabaseForRun, raw, gql, cleanup };
 }

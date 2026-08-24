@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { createTestApi, requireDatabase } from '../support/integration-api';
+import { createTestApi } from '../support/integration-api';
 
 /**
  * Pagination and filtering against real Postgres.
@@ -30,7 +30,7 @@ const PAGE_QUERY = `
 `;
 
 beforeAll(async () => {
-  await requireDatabase(api.prisma);
+  await api.requireDatabase();
 });
 
 afterAll(async () => {

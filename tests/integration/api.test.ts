@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { createTestApi, requireDatabase } from '../support/integration-api';
+import { createTestApi } from '../support/integration-api';
 
 /**
  * End-to-end API tests against real Postgres.
@@ -42,7 +42,7 @@ const CREATE_BOOKMARK = `
 `;
 
 beforeAll(async () => {
-  await requireDatabase(api.prisma);
+  await api.requireDatabase();
 });
 
 afterAll(async () => {
